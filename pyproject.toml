@@ -1,7 +1,7 @@
 [project]
-name = "garminconnect-lambda-mackerel"
+name = "garminconnect-otel-metrics"
 version = "0.1.0"
-description = "Add your description here"
+description = "Garmin Connect のアクティビティを OpenTelemetry メトリクスとして OTLP で送信する"
 requires-python = ">=3.13"
 dependencies = [
     "curl-cffi>=0.15.0",

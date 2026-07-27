@@ -46,7 +46,7 @@ provider = MeterProvider(
 )
 metrics.set_meter_provider(provider)
 
-meter = metrics.get_meter("garminconnect-lambda-mackerel")
+meter = metrics.get_meter("garminconnect-otel-metrics")
 
 
 for name, key, unit, description in METRIC_DEFINITIONS:

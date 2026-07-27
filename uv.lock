@@ -165,7 +165,7 @@ wheels = [
 ]
 
 [[package]]
-name = "garminconnect-lambda-mackerel"
+name = "garminconnect-otel-metrics"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
