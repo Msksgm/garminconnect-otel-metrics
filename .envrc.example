@@ -1,0 +1,12 @@
+# .venv activate
+source .venv/bin/activate
+
+# Garmin Authentication
+export EMAIL='YOUR_GARMIN_EMAIL'
+export PASSWORD='YOUR_GARMIN_PASSWORD'
+
+export OTEL_SERVICE_NAME="garmin"
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317"
+
+export MACKEREL_API_KEY='YOUR_MACKEREL_API_KEY'
+export NEW_RELIC_API_KEY='YOUR_NEW_RELIC_API_KEY'

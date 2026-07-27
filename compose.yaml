@@ -1,0 +1,14 @@
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.157.0@sha256:f2f01157055a9b2aab9df7118e1f1c9abf345e99b23bc7a2bc791db374a7d0f6
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4317:4317"
+    # otel-collector-config.yaml が参照する ${env:...} は、未設定でも空文字で起動して
+    # しまい認証エラーまで気づけない。`:?` で Compose 起動前にフェイルファストさせる
+    environment:
+      MACKEREL_API_KEY: ${MACKEREL_API_KEY:?MACKEREL_API_KEY is required}
+      NEW_RELIC_API_KEY: ${NEW_RELIC_API_KEY:?NEW_RELIC_API_KEY is required}
+    restart: no

@@ -1,0 +1,27 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  batch:
+
+exporters:
+  otlp_grpc/mackerel:
+    endpoint: otlp.mackerelio.com:4317
+    headers:
+      Mackerel-Api-Key: ${env:MACKEREL_API_KEY}
+  otlp_http/newrelic:
+    endpoint: https://otlp.nr-data.net:4318
+    headers:
+      api-key: ${env:NEW_RELIC_API_KEY}
+  debug:
+    verbosity: normal
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp_grpc/mackerel, otlp_http/newrelic, debug]
