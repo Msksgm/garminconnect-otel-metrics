@@ -1,0 +1,47 @@
+[tools]
+python = "3.13" # .python-version と同じ
+uv = "0.11.25"  # ローカルと CI で同一バージョンを使うためここで一元管理する
+
+[tasks."uv:sync"]
+description = "uv sync --locked（uv.lock が pyproject.toml と一致するか検証して同期する）"
+run = "uv sync --locked"
+
+[tasks."uv:run"]
+description = "python main.py（`-- --now <ISO8601>` で送信判定の基準時刻を指定できる）"
+run = "uv run python main.py"
+
+[tasks."uv:test"]
+description = "pytest（単体テストを実行する）"
+run = "uv run pytest -q"
+
+[tasks."docker:compose:up"]
+description = "docker compose up"
+run = "docker compose up"
+
+[tasks."docker:compose:up:d"]
+description = "docker compose up -d（バックグラウンド起動）"
+run = "docker compose up -d"
+
+# dry-run の config は Mackerel / New Relic exporter を持たないため API キーは使われない。
+# ただし compose.yaml の `:?` 検証はファイル読み込み時に評価されるためダミー値で満たす。
+# 停止・ログ・撤収は docker:compose:stop / logs / down をそのまま使える
+[tasks."docker:compose:up:d:dryrun"]
+description = "dry-run（本番 APM に送らず debug exporter に出すだけ）で Collector を起動する"
+env = { COMPOSE_FILE = "compose.yaml:compose.dryrun.yaml", MACKEREL_API_KEY = "dry-run", NEW_RELIC_API_KEY = "dry-run" }
+run = "docker compose up -d"
+
+[tasks."docker:compose:wait"]
+description = "OTel Collector が OTLP を受信できるようになるまで待つ"
+run = "./scripts/wait-for-collector.sh"
+
+[tasks."docker:compose:stop"]
+description = "batch processor を drain してから Collector を停止する"
+run = ["sleep 5", "docker compose stop --timeout 30"]
+
+[tasks."docker:compose:logs"]
+description = "docker compose logs"
+run = "docker compose logs --no-color --timestamps"
+
+[tasks."docker:compose:down"]
+description = "docker compose down"
+run = "docker compose down"
