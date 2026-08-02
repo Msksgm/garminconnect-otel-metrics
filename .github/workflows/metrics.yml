@@ -1,0 +1,110 @@
+name: Garmin metrics
+
+on:
+  schedule:
+    # 毎時 13 分。毎時 00 分は GitHub 側スケジューラが混雑し遅延が大きいためずらしている
+    - cron: "13 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "本番 APM に送信せず Collector のログ出力だけで確認する"
+        type: boolean
+        default: false
+
+# workflow 全体では一切の権限を与えず、job ごとに必要最小限だけ付与する
+permissions: {}
+
+concurrency:
+  # 途中キャンセルすると batch processor に残ったメトリクスが失われるため cancel しない
+  group: garmin-metrics
+  cancel-in-progress: false
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    permissions:
+      contents: read # actions/checkout がリポジトリを読むためだけに必要
+
+    env:
+      # compose.yaml の ${VAR:?} 補間は up / logs / stop / down すべてで評価されるため
+      # step 単位ではなく job 単位に置く（step 単位だと teardown が落ちる）
+      MACKEREL_API_KEY: ${{ secrets.MACKEREL_API_KEY }}
+      NEW_RELIC_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
+      # service.name は main.py が持つため環境変数では渡さない（渡してもコード側が優先される）
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4317
+      # dry-run では Collector の exporter を debug だけに差し替える。up / wait / stop / logs / down
+      # すべての docker compose 呼び出しに効かせるため step ではなく job 単位に置く。
+      # schedule 実行では inputs.dry_run が空になるため、定期実行は従来どおり本番送信のまま
+      COMPOSE_FILE: ${{ inputs.dry_run && 'compose.yaml:compose.dryrun.yaml' || 'compose.yaml' }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # python / uv のバージョンは mise.toml の [tools] が単一の情報源。
+      # mise-action が MISE_TRUSTED_CONFIG_PATHS を設定するため mise trust は不要
+      - name: Set up mise
+        uses: jdx/mise-action@7e36c90d9ab29c415a2384db3006f3ec8a8cc654 # v4.2.4
+
+      # mise がキャッシュするのは uv バイナリまでなので、依存パッケージのキャッシュは別に持つ
+      - name: Cache uv packages
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+          restore-keys: uv-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: mise run uv:sync
+
+      - name: Materialize Garmin tokens
+        env:
+          GARMIN_TOKENS: ${{ secrets.GARMIN_TOKENS }}
+        run: |
+          set -euo pipefail
+          # トークンの置き場所は runner の一時領域（job 終了時に消える）。runner コンテキストは
+          # job 単位 env では使えないため、シェルの $RUNNER_TEMP からここで解決する。
+          # export は同一 step 内の検証用、$GITHUB_ENV は後続 step（Export metrics）用
+          export GARMINTOKENS="${RUNNER_TEMP}/garminconnect"
+          echo "GARMINTOKENS=${GARMINTOKENS}" >> "$GITHUB_ENV"
+          if [ -z "${GARMIN_TOKENS}" ]; then
+            echo "::error::secret GARMIN_TOKENS が未設定です"
+            exit 1
+          fi
+          mkdir -p "${GARMINTOKENS}"
+          chmod 700 "${GARMINTOKENS}"
+          printf '%s' "${GARMIN_TOKENS}" > "${GARMINTOKENS}/garmin_tokens.json"
+          chmod 600 "${GARMINTOKENS}/garmin_tokens.json"
+          # 値は出さずキーの有無だけ検証する（runner 同梱の python3 で足りる）
+          python3 -c "
+          import json, os, sys
+          p = os.path.join(os.environ['GARMINTOKENS'], 'garmin_tokens.json')
+          d = json.load(open(p))
+          missing = [k for k in ('di_token','di_refresh_token','di_client_id') if not d.get(k)]
+          if missing:
+              sys.exit(f'GARMIN_TOKENS に必要なキーがありません: {missing}')
+          print('token file ok (keys:', sorted(d), ')')
+          "
+
+      - name: Start OTel Collector
+        run: mise run docker:compose:up:d
+
+      - name: Wait for Collector readiness
+        run: mise run docker:compose:wait
+
+      - name: Export metrics
+        run: mise run uv:run
+
+      # ログは stop の後に出す。先に出すと drain と debug exporter の最終出力が欠ける
+      - name: Drain and stop Collector
+        if: always()
+        run: mise run docker:compose:stop
+
+      - name: Collector logs
+        if: always()
+        run: mise run docker:compose:logs
+
+      - name: Tear down
+        if: always()
+        run: mise run docker:compose:down
