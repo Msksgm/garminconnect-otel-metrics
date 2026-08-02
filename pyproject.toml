@@ -11,3 +11,12 @@ dependencies = [
     "opentelemetry-exporter-otlp-proto-http>=1.43.0",
     "opentelemetry-sdk>=1.43.0",
 ]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+# tests/ に __init__.py を置かない構成では pytest が tests/ しか sys.path に入れないため、
+# リポジトリ直下を明示して import activity を解決できるようにする
+pythonpath = ["."]
+testpaths = ["tests"]

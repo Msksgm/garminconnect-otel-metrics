@@ -1,3 +1,4 @@
 .envrc
 /tmp
 __pycache__/
+.pytest_cache/

@@ -1,0 +1,13 @@
+# compose.yaml に重ねる dry-run 用の override。
+# 使い方: COMPOSE_FILE=compose.yaml:compose.dryrun.yaml docker compose up -d
+#         （Makefile の docker.compose.up.d.dryrun が設定済み）
+#
+# environment は上書きしない。compose.yaml の ${VAR:?} 補間は override の有無に関わらず
+# ファイル読み込み時に評価されるため、override 側から取り消すことはできない。
+# 本番の fail-fast を温存し、ローカル dry-run では Makefile 側でダミー値を与えている。
+services:
+  otel-collector:
+    # volumes はマウント先パスをキーにマージされるため、同じ /etc/otel-collector-config.yaml を
+    # 指定することで追加ではなく置換になる
+    volumes:
+      - ./otel-collector-config.dryrun.yaml:/etc/otel-collector-config.yaml:ro

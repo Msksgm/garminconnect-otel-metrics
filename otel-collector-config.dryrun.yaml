@@ -1,0 +1,25 @@
+# dry-run 用の Collector 設定。otel-collector-config.yaml から本番 exporter を除いた版。
+#
+# 「どこに送るか / 送らないか」は Collector の責務なので、送信の抑制もここで表現する。
+# main.py 側に分岐を入れないことで、dry-run でも本番と完全に同じコード経路
+# （exporter 構築 → force_flush → shutdown）が走る。
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  batch:
+
+exporters:
+  # 本番は normal だが、dry-run では記録された値そのものを確認したいので detailed にする
+  debug:
+    verbosity: detailed
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
