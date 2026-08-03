@@ -36,8 +36,11 @@ SEND_WINDOW_HOURS: Final = 1
 SEND_WINDOW: Final = timedelta(hours=SEND_WINDOW_HOURS)
 # ラン直後に散歩などを記録すると「最新1件」ではランが見えなくなるため余裕をもって取る
 ACTIVITY_FETCH_LIMIT: Final = 10
-# --now のヘルプとエラーメッセージで同じ例を示すため、1箇所に持つ
-NOW_EXAMPLE: Final = "2026-07-31T12:13:00+00:00"
+# 送信判定の窓が1時間単位のため、基準時刻も時までで足りる。分以下を書けない形式にすることで
+# 「入力できる粒度」と「判定に効く粒度」を一致させる
+BASE_TIME_FORMAT: Final = "%Y-%m-%dT%H%z"
+# --base-time のヘルプとエラーメッセージで同じ例を示すため、1箇所に持つ
+BASE_TIME_EXAMPLE: Final = "2026-07-31T12+09:00"
 
 
 def _prompt_mfa() -> str:
@@ -99,27 +102,25 @@ def build_meter_provider(endpoint: str) -> MeterProvider:
     return provider
 
 
-def _parse_now(value: str) -> datetime:
-    """--now の値を UTC の aware datetime にする。
+def _parse_base_time(value: str) -> datetime:
+    """--base-time の値を UTC の aware datetime にする。
 
-    naive を通すと activity 側の時刻比較が TypeError になり、原因が読み取れない場所で
-    落ちるため、タイムゾーンの明示をここで要求する。UTC に正規化するのは、既定値の
-    datetime.now(UTC) と表現を揃え、ログの読み手が時差を暗算せずに済むようにするため。
+    BASE_TIME_FORMAT の固定形式で受けることで「分以下を書けない」「タイムゾーン必須」を
+    パーサ自体に守らせる。naive を通すと activity 側の時刻比較が TypeError になり、
+    原因が読み取れない場所で落ちるため、タイムゾーンの明示をここで要求する。UTC に
+    正規化するのは、既定値の datetime.now(UTC) と表現を揃え、ログの読み手が時差を
+    暗算せずに済むようにするため。
     """
     try:
-        parsed = datetime.fromisoformat(value)
+        parsed = datetime.strptime(value, BASE_TIME_FORMAT)
     except ValueError as error:
         raise argparse.ArgumentTypeError(
-            f"ISO 8601 形式で指定してください（例: {NOW_EXAMPLE}）"
+            f"時刻までをタイムゾーン付きで指定してください（例: {BASE_TIME_EXAMPLE}）"
         ) from error
-    if parsed.tzinfo is None:
-        raise argparse.ArgumentTypeError(
-            f"タイムゾーンを含めて指定してください（例: {NOW_EXAMPLE}）"
-        )
     return parsed.astimezone(UTC)
 
 
-def parse_now_argument() -> datetime | None:
+def parse_base_time_argument() -> datetime | None:
     """コマンドライン引数から送信判定の基準時刻を取り出す。未指定なら None。
 
     ローカルで過去の時刻を指定し、送信まで通る経路を実データで確認できるようにするための入口。
@@ -127,14 +128,23 @@ def parse_now_argument() -> datetime | None:
 
     Namespace ではなく datetime | None を返すのは、argparse の型を呼び出し側に漏らさないため。
     """
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--now",
-        type=_parse_now,
-        default=None,
-        help=f"送信判定の基準時刻。未指定なら実行時刻（例: {NOW_EXAMPLE}）",
+    # 日常の実行導線が mise のため、`--` の区切りを忘れて引数が mise 側に食われる事故が起きる。
+    # 正解の1行を --help に置く（epilog の改行を保つため RawDescriptionHelpFormatter を使う）
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        epilog=(
+            "mise 経由で渡す場合は `--` で区切る:\n"
+            f"  mise run uv:run -- --base-time {BASE_TIME_EXAMPLE}"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    return parser.parse_args().now
+    parser.add_argument(
+        "--base-time",
+        type=_parse_base_time,
+        default=None,
+        help=f"送信判定の基準時刻。未指定なら実行時刻（例: {BASE_TIME_EXAMPLE}）",
+    )
+    return parser.parse_args().base_time
 
 
 def main(now: datetime | None = None) -> int:
@@ -215,4 +225,4 @@ def main(now: datetime | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(parse_now_argument()))
+    sys.exit(main(parse_base_time_argument()))

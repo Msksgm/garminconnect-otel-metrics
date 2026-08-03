@@ -10,6 +10,10 @@ on:
         description: "本番 APM に送信せず Collector のログ出力だけで確認する"
         type: boolean
         default: false
+      base_time:
+        description: "送信判定の基準時刻。空なら実行時刻（例: 2026-07-31T12+09:00）"
+        type: string
+        default: ""
 
 # workflow 全体では一切の権限を与えず、job ごとに必要最小限だけ付与する
 permissions: {}
@@ -93,8 +97,18 @@ jobs:
       - name: Wait for Collector readiness
         run: mise run docker:compose:wait
 
+      # 入力値は ${{ }} で run に直接展開せず env 経由で渡す（シェルへの注入を避ける）。
+      # schedule 実行では空になるため、定期実行は従来どおり実行時刻を基準にする
       - name: Export metrics
-        run: mise run uv:run
+        env:
+          BASE_TIME: ${{ inputs.base_time }}
+        run: |
+          set -euo pipefail
+          if [ -n "${BASE_TIME}" ]; then
+            mise run uv:run -- --base-time "${BASE_TIME}"
+          else
+            mise run uv:run
+          fi
 
       # ログは stop の後に出す。先に出すと drain と debug exporter の最終出力が欠ける
       - name: Drain and stop Collector
